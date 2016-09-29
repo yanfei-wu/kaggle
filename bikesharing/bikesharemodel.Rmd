@@ -1,0 +1,283 @@
+---
+title: "Bike Sharing Demand Forecast_Models" 
+author: "Yanfei Wu"
+date: "September 28, 2016"
+output: 
+  html_document: 
+    highlight: pygments
+    theme: spacelab
+    keep_md: true
+---
+
+* * *
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+```
+
+```{r packages, include = F}
+library(ggplot2)
+library(ggthemes)
+library(gridExtra)
+library(tidyr)
+library(rpart)
+library(randomForest)
+```  
+
+```{r set theme, include = T}
+theme_set(theme_bw())
+```
+
+Continued from [last post](https://yanfei-wu.github.io/2016-09-26-bikeshare/) where exploratory analysis of the bike sharing data in the Capital Bikeshare program in Washington, D.C. was performed, this post will be focused on building models to predict the actual bike sharing demand. In particular, different predictive models will be compared. All the codes for this post can be found in [Github](https://github.com/yanfei-wu/kaggle/tree/master/bikesharing).  
+
+* * *
+
+## Pre-processing  
+
+The train and test datasets were provided by Kaggle. The test dataset is unlabeled. The prediction of the test set is submitted to Kaggle to obtain a score (based on quadratic weighted kappa to measure the aggrement between human rating and the predicted rating). The score is further used to evaluate the model. The labeled train dataset looks like this:  
+
+```{r get data}
+train <- read.csv('train.csv')
+str(train)
+```
+
+There is datetime, and some coded variables such as season, weather, etc. The detailed variable information can be found from the last post. Some important findings about the dateset from EDA performed in the last post include:  
+
+1. *Hour* is an important feature that can be added to the dataset because there is a clear pattern of bike demand at different times of the day.  
+2. The bike rental demand also differs by each day of the week. Adding a feature *weekday* can certainly capture the day-to-day variation. So it might be better than just using *holiday* and *workingday* variables.   
+3. The seasonal fluctuation of bike rental demand is convoluted with the overall demand increase over time. This makes a linear regression model less helpful in this case.
+4. The seasonal fluctuation (ignoring demand growth) is strongly related to weather variables, especially temperature. 
+5. *Casual* and *registered* user initiated bike rentals show distinct patterns in both hourly basis and daily basis. For casual users, the seasonal fluctuations more closely reflect the actual season effect. So a linear regression model might be useful to predict casual user initiated bike rentals.   
+
+Keeping these in mind, I would like to explore and compare linear model and tree based models. The goal is to determine benchmark performance for different models. Therefore, only basic feature selections will be carried out instead of very sophisticated ones.   
+
+First of all, some pre-processing steps are carried out for the dataset, including:  
+
+1. Convert *datetime* variable from factor variable to date-time class.   
+2. Convert intergers to factors for the coded variables such as season, workingday, weather.  
+3. Add *hour* and *weekday* features to the dateset.   
+4. Split dataset into training and cross-validation sets for model tuning purpose. *Note*: instead of random split, in this case, the dataset is split by each month of the two years, the first 14 days of the month as training set, and the 15th to 19th as cross-validation set.     
+
+
+```{r pre-processing}
+train$datetime <- as.POSIXct(train$datetime) 
+train$hour <- as.integer(format(train$datetime, '%H'))
+train$weekday <- factor(weekdays(train$datetime))
+
+train$season <- factor(train$season)
+train$holiday <- factor(train$holiday)
+train$workingday <- factor(train$workingday)
+
+# split the dateset into training and cross-validation 
+train$year <- as.integer(format(train$datetime, '%Y'))
+train$month <- as.integer(format(train$datetime, '%m'))
+train$date <- as.integer(format(train$datetime, '%d'))
+
+bike.train <- train[train$date < 15, ]
+bike.cv <- train[train$date >= 15, ]
+```
+
+* * *
+
+## Model Selection  
+
+In this session, linear regression and tree based models are compared.   
+
+*Note*: only the past data is used to predict the future data. So for each subset of the cross-validation set, a new model is built using specific training data based on the cut-off time determined by the cross-validation subset.   
+
+### Linear Regression  
+
+As stated above, linear regression seems not to be very helpful in this case because of the combined seasonality and the overall increasing trend. But just to see exactly how it performs and to set a baseline, linear regression model is built and evaluated. 
+
+```{r linear regression, warning = F}
+# model: count ~ hour + weekday + temp + humidity + windspeed  
+
+# build function for prediction using linear regression 
+PredictCVSubset <- function(year, month) {
+    cv.Loc <- bike.cv[(bike.cv$year == year) & (bike.cv$month == month), ]
+    train.Loc <- bike.train[bike.train$datetime <= min(cv.Loc$datetime), ]
+    linear.model <- lm(count ~ year + hour + weekday + temp + windspeed + humidity, train.Loc)
+    pred.cv <- predict(linear.model, cv.Loc)
+    return(pred.cv)
+}
+
+# apply prediction function to get predicted counts on cross-validation set
+pred.cv <- NULL
+for (year in unique(bike.cv$year)) {
+    for (month in unique(bike.cv$month)) {
+        pred.cv <- append(pred.cv, PredictCVSubset(year, month))
+    }
+}
+
+# Model evaluation 
+prediction <- data.frame(datetime = bike.cv$datetime, 
+           predicted = pred.cv, actual = bike.cv$count) 
+
+RMSE <- sqrt(mean((prediction$predicted - prediction$actual)^2))
+```
+
+```{r lm.evaluate, fig.width = 6, fig.height = 4, fig.align = 'center'}
+prediction.gather <- gather(prediction, type, count, predicted:actual)
+
+ggplot(prediction.gather, aes(x = datetime, y = count)) + 
+    geom_jitter(aes(color = type), alpha = 0.2) + 
+    theme(legend.title = element_blank())
+```
+
+Apparently, the model somewhat captures the seasonality but largely fails in predicting the overall growth trend. The root mean squared error for the cross-validation set is `r round(RMSE, 2)`. The Kaggle score obtained by using this model (with the entire train dataset, cross-validation set included) is **1.16**.   
+
+However, the plot above also implies that a linear regression model should work well enough for predicting demand from casual users. I will revisit this later. 
+
+
+### Tree-based Models  
+
+Unlike linear models, tree-based models can map non-linear relationships quite well. So decision tree and random forest models are explored and compared here.  
+
+#### Decision Tree  
+
+```{r decisiontree}
+# model: count ~ hour + weekday + temp + humidity + windspeed  
+
+# build function for prediction using decision tree 
+PredictCVSubset_tree <- function(year, month) {
+    cv.Loc <- bike.cv[(bike.cv$year == year) & (bike.cv$month == month), ]
+    train.Loc <- bike.train[bike.train$datetime <= min(cv.Loc$datetime), ]
+    tree.model <- rpart(formula = count ~ hour + weekday + temp + windspeed + humidity, data = train.Loc, method = 'anova')
+    pred.cv <- predict(tree.model, cv.Loc)
+    return(pred.cv)
+}
+
+# apply prediction function to get predicted counts on cross-validation set
+pred.cv <- NULL
+for (year in unique(bike.cv$year)) {
+    for (month in unique(bike.cv$month)) {
+        pred.cv <- append(pred.cv, PredictCVSubset_tree(year, month))
+    }
+}
+
+# Model evaluation 
+prediction <- data.frame(datetime = bike.cv$datetime, 
+           predicted = pred.cv, actual = bike.cv$count) 
+
+RMSE <- sqrt(mean((prediction$predicted - prediction$actual)^2))
+
+```
+
+```{r tree.evaluate, fig.width = 6, fig.height = 4, fig.align = 'center'}
+prediction.gather <- gather(prediction, type, count, predicted:actual)
+
+ggplot(prediction.gather, aes(x = datetime, y = count)) + 
+    geom_jitter(aes(color = type), alpha = 0.2) + 
+    theme(legend.title = element_blank())
+```
+It appears the model captures some seasonality and growth trend. The root mean squared error for the cross-validation set is `r round(RMSE, 2)`. The Kaggle score obtained by using this model (with the entire train dataset, cross-validation set included) is **0.80**, which is a significant improvement from linear regression model.
+
+#### Random Forest  
+
+Random forest model operates by constructing a multitude of decision trees and it can correct for decision trees' habit of overfitting to their training set.  
+
+```{r randomforest}
+# model: count ~ hour + weekday + temp + humidity + windspeed  
+
+# build function for prediction using random forest 
+PredictCVSubset_rf <- function(year, month) {
+    cv.Loc <- bike.cv[(bike.cv$year == year) & (bike.cv$month == month), ]
+    train.Loc <- bike.train[bike.train$datetime <= min(cv.Loc$datetime), ]
+    feature <- c('hour', 'weekday', 'temp', 'humidity', 'windspeed')
+    rf.model <- randomForest(train.Loc[, feature], train.Loc[, "count"], ntree = 100)
+    pred.cv <- predict(rf.model, cv.Loc)
+    return(pred.cv)
+}
+
+# apply prediction function to get predicted counts on cross-validation set
+pred.cv <- NULL
+for (year in unique(bike.cv$year)) {
+    for (month in unique(bike.cv$month)) {
+        pred.cv <- append(pred.cv, PredictCVSubset_rf(year, month))
+    }
+}
+
+# Model evaluation 
+prediction <- data.frame(datetime = bike.cv$datetime, 
+           predicted = pred.cv, actual = bike.cv$count) 
+
+RMSE <- sqrt(mean((prediction$predicted - prediction$actual)^2))
+```
+
+```{r rf.evaluate, fig.width = 6, fig.height = 4, fig.align = 'center'}
+prediction.gather <- gather(prediction, type, count, predicted:actual)
+ggplot(prediction.gather, aes(x = datetime, y = count)) + 
+    geom_jitter(aes(color = type), alpha = 0.2) +
+    theme(legend.title = element_blank())
+```
+
+Again, the model captures to certain degree both the seasonality and growth trend. The root mean squared error for the cross-validation set is `r round(RMSE, 2)`. The Kaggle score obtained by using this model (with the entire train dataset, cross-validation set included) is **0.81**, which is similar to decision tree model.
+
+
+### Linear Regression + Decision Tree 
+
+As mentioned above, the casual users and registered users show different bike rantal patterns. The casual user initiated bike rentals mainly show seasonality, and thus a linear regression model should be useful in predicting the demand. But for registered user initiated bike rentals, growth with time as well as seasonal difference exist and a tree-based model is better for prediction.  
+
+So what if we combine the two models? After all, the total demand is the demand from casual users and that from registered users. What if we predict the former with a linear regression model and the latter a tree-based model, e.g., simple decision tree.  
+
+```{r lm+tree, warning = F}
+# function for predicting casual user demand
+PredictCVSubset_lm <- function(year, month) {
+    cv.Loc <- bike.cv[(bike.cv$year == year) & (bike.cv$month == month), ]
+    train.Loc <- bike.train[bike.train$datetime <= min(cv.Loc$datetime), ]
+    linear.model <- lm(casual ~ year + hour + weekday + temp + windspeed + humidity, train.Loc)
+    pred.cv.lm <- predict(linear.model, cv.Loc)
+    return(pred.cv.lm)
+}
+
+# apply function to predict casual user demand
+pred.cv.lm <- NULL
+for (year in unique(bike.cv$year)) {
+    for (month in unique(bike.cv$month)) {
+        pred.cv.lm <- append(pred.cv.lm, PredictCVSubset_lm(year, month))
+    }
+}
+
+# function for predicting registered user demand
+PredictCVSubset_tree <- function(year, month) {
+    cv.Loc <- bike.cv[(bike.cv$year == year) & (bike.cv$month == month), ]
+    train.Loc <- bike.train[bike.train$datetime <= min(cv.Loc$datetime), ]
+    tree.model <- rpart(formula = registered ~ hour + weekday + temp + windspeed + humidity, data = train.Loc, method = 'anova')
+    pred.cv.tree <- predict(tree.model, cv.Loc)
+    return(pred.cv.tree)
+}
+
+# apply function to predict casual user demand
+pred.cv.tree <- NULL
+for (year in unique(bike.cv$year)) {
+    for (month in unique(bike.cv$month)) {
+        pred.cv.tree <- append(pred.cv.tree, PredictCVSubset_tree(year, month))
+    }
+}
+
+# total predicted demand
+count <- pred.cv.lm + pred.cv.tree
+prediction <- data.frame(datetime = bike.cv$datetime, 
+           predicted = count, actual = bike.cv$count) 
+
+RMSE <- sqrt(mean((prediction$predicted - prediction$actual)^2))
+``` 
+
+```{r combinedmodel, fig.width = 6, fig.height = 4, fig.align = 'center'}
+prediction.gather <- gather(prediction, type, count, predicted:actual)
+ggplot(prediction.gather, aes(x = datetime, y = count)) + 
+    geom_jitter(aes(color = type), alpha = 0.2) + 
+    theme(legend.title = element_blank())
+```  
+
+Clearly, the combined model is doing much better than the linear regression model alone. The root mean squared error for the cross-validation set is `r round(RMSE, 2)`. The Kaggle score obtained by using this model (with the entire train dataset, cross-validation set included) is **0.83**, which is slightly worse than the decision tree or random forest model alone.  
+
+* * *
+
+## Conclusion  
+
+To summarize, tree-based models are better than linear regression for predicting the bike rental demand because of the seasonality and overall growth trend in the dataset. The dinstinct patterns between demand from casual users and registered users also allow us to combined linear regression and tree-based models in this case.  
+
+Note that the scores obtained so far are more like the benchmark performance of different models. The scores can be further inproved by more sophisticated feature engineering and selection. 
+
+
