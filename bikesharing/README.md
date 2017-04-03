@@ -32,4 +32,4 @@ The dataset includes historical usage patterns with weather data in the Capital 
 - `registered`: number of registered user rentals initiated 
 
 **Target Variable** 
-count - number of total rentals  
+- `count`: number of total rentals  
