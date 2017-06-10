@@ -88,9 +88,11 @@ ENV/
 # Rope project settings
 .ropeproject
 
+#folders
 data/
-.DS_Store
+references/
 
 # History files
 .Rhistory
+.DS_Store
 
