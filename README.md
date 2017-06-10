@@ -13,8 +13,8 @@ Built classification models to classify whether question pairs from Quora are du
 
 **Keywords:** Python, natural language processing, classification, feature engineering, model tuning, logistic regression, ensemble methods, neural network 
 
-## 3. Credit Card Fraud Detection (`fraud/`) (ongoing)
+## 3. Credit Card Fraud Detection (`fraud/`)
 
-Built supervised classification model for fraud detection using preprocessed and anonymized credit card transaction data. Applied multiple techniques for dealing with imbalanced data. 
+Built supervised classification model for fraud detection using preprocessed and anonymized credit card transaction data. Applied and compared multiple techniques for dealing with imbalanced data. 
 
-**Keywords:** Python, classification, class imbalance 
+**Keywords:** Python, classification, class imbalance, class weight, SMOTE, precision-recall curve, AUC  
