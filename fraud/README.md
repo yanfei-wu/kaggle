@@ -1,4 +1,4 @@
-# Fraud Detection 
+# Fraud Detection: Learning from Imbalanced Data 
 
 ## Overview  
 Fraud detection is an important application of Machine Learning. It works on the basis of large, historical datasets that have been aggregated across many clients. The data serve as the training set and allow businesses to build efficient machine-learning-based fraud detection systems with optimized performance. Compared to standard predictive modeling problem, fraud detection is characterized with skewed class distribution, or class imbalance, since fraud is a relatively rare event. Therefore, one challenge of fraud detection with Machine Learning is to mitigate the class imbalance problem.  
