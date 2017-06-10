@@ -82,4 +82,7 @@ This project explores approaches for handling class imbalance by building superv
 * Adjusting class weight of Random Forest model gives slightly better result than training the model on SMOTE-balanced dataset.  
 
 
-[1] J. Davis et al. The relationship between Precision-Recall and ROC curves. Proceeding ICML '06 Proceedings of the 23rd international conference on Machine learning 2006 
+
+## References  
+
+[1] J. Davis et al. The relationship between Precision-Recall and ROC curves. Proceedings of the 23rd international conference on Machine learning, 2006. 
