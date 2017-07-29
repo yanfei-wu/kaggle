@@ -13,8 +13,14 @@ Built supervised classification model for fraud detection using preprocessed and
 
 **Keywords:** Python, classification, class imbalance, class weight, SMOTE, precision-recall curve, AUC  
 
+## 3. Predict Zestimate Logerror (`zillow/`) (ongoing)
 
-## 3. Quora Question Pairs (`quora_question/`) (ongoing)
+Built supervised regression model to predict Zillow's Zestimate errors based on a number of features. Performed data visualization, cleaning (missing data imputation), feature selection, and model performance evaluation. 
+
+**Keywords:** Python, regression, feature engineering, model tuning, model stacking 
+
+
+## 4. Quora Question Pairs (`quora_question/`) (ongoing)
 
 Built classification models to classify whether question pairs from Quora are duplicates or not in order to make it easier to find high quality answers to questions. Various features were generated from the question texts and different classification models were evaluated and compared. 
 
