@@ -4,11 +4,9 @@
 
 Zillow's “Zestimates” are estimated home values based on 7.5 million statistical and machine learning models that analyze hundreds of data points on each property. A home is often the largest and most expensive purchase a person makes in his or her lifetime. Therefore, ensuring homeowners have a trusted way to monitor this asset is incredibly important. Zestimate was created to give consumers as much information as possible about homes and the housing market, marking the first time consumers had access to this type of home value information at no cost. And by continually improving the median margin of error (from 14% at the onset to 5% today), Zillow has since become established as one of the largest, most trusted marketplaces for real estate information in the U.S. and a leading example of impactful machine learning.  
 
-The goal of this project is to makes predictions about the future sale prices of homes. The prediction results are evaluated on Mean Absolute Error between the predicted log error and the actual log error. The logerror is defined as  
+The goal of this project is to makes predictions about the future sale prices of homes. The prediction results are evaluated on Mean Absolute Error between the predicted log error and the actual log error. The `logerror` (target variable) is defined as  
 
-*logerror = log(Zestimate) - log(SalePrice)* 
-
-and it is recorded in the transactions training data. 
+*logerror = log(Zestimate) - log(SalePrice)*
 
 **Keywords:** regression model, model stacking
 
